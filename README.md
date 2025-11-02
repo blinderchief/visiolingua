@@ -141,14 +141,4 @@ docker-compose up --build
 4. Add tests and documentation
 5. Submit a pull request
 
-## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## Demo
-
-Visit [VisioLingua Demo](https://visiolingua.vercel.app) to try the live application.
-
-## Support
-
-For questions or issues, please open an issue on GitHub or contact the development team.
