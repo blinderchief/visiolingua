@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useAuth } from '@clerk/nextjs'
-import { Search, Image, FileText, History, Camera } from 'lucide-react'
+import { Search, Image, FileText, History, Camera, Mic, MicOff, Loader2, Sparkles } from 'lucide-react'
 
 interface QueryResult {
   content?: string
@@ -34,6 +34,8 @@ export default function QueryComponent({ onQuerySuccess, queryHistory }: QueryCo
   const [loading, setLoading] = useState(false)
   const [results, setResults] = useState<QueryResponse | null>(null)
   const [imageFile, setImageFile] = useState<File | null>(null)
+  const [isListening, setIsListening] = useState(false)
+  const [recognition, setRecognition] = useState<any>(null)
 
   const { getToken, userId } = useAuth()
 
@@ -118,17 +120,70 @@ export default function QueryComponent({ onQuerySuccess, queryHistory }: QueryCo
   useEffect(() => { try { localStorage.setItem('vl.query.text', query) } catch {} }, [query])
   useEffect(() => { try { localStorage.setItem('vl.query.lang', selectedLang) } catch {} }, [selectedLang])
 
+  // Initialize Web Speech API
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'webkitSpeechRecognition' in window) {
+      const SpeechRecognition = (window as any).webkitSpeechRecognition
+      const recognitionInstance = new SpeechRecognition()
+      recognitionInstance.continuous = false
+      recognitionInstance.interimResults = false
+      
+      // Map language codes for speech recognition
+      const langMap: Record<string, string> = {
+        en: 'en-US',
+        es: 'es-ES',
+        fr: 'fr-FR',
+        de: 'de-DE',
+        zh: 'zh-CN',
+        hi: 'hi-IN'
+      }
+      
+      recognitionInstance.onstart = () => setIsListening(true)
+      recognitionInstance.onend = () => setIsListening(false)
+      recognitionInstance.onerror = () => setIsListening(false)
+      
+      recognitionInstance.onresult = (event: any) => {
+        const transcript = event.results[0][0].transcript
+        setQuery(transcript)
+      }
+      
+      setRecognition(recognitionInstance)
+    }
+  }, [])
+
+  const toggleVoiceInput = () => {
+    if (!recognition) {
+      alert('Voice input not supported in this browser. Please use Chrome or Edge.')
+      return
+    }
+    
+    if (isListening) {
+      recognition.stop()
+    } else {
+      const langMap: Record<string, string> = {
+        en: 'en-US',
+        es: 'es-ES',
+        fr: 'fr-FR',
+        de: 'de-DE',
+        zh: 'zh-CN',
+        hi: 'hi-IN'
+      }
+      recognition.lang = langMap[selectedLang] || 'en-US'
+      recognition.start()
+    }
+  }
+
   return (
     <div className="space-y-6">
       {queryHistory.length > 0 && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-          <h3 className="text-sm font-medium text-blue-900 mb-2 flex items-center">
+        <div className="glass-card p-4 border-l-4 border-indigo-500">
+          <h3 className="text-sm font-medium text-indigo-900 mb-2 flex items-center">
             <History className="h-4 w-4 mr-2" />
             Recent Queries ({queryHistory.length})
           </h3>
           <div className="space-y-1">
             {queryHistory.slice(-3).reverse().map((item, idx) => (
-              <div key={idx} className="text-xs text-blue-700">
+              <div key={idx} className="text-xs text-indigo-700">
                 • "{item.query}" - {item.results.results.length} results ({new Date(item.timestamp).toLocaleTimeString()})
               </div>
             ))}
@@ -137,127 +192,157 @@ export default function QueryComponent({ onQuerySuccess, queryHistory }: QueryCo
       )}
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
+        <label className="block text-sm font-semibold text-gray-700 mb-2">
           Query Language
         </label>
         <select
           value={selectedLang}
           onChange={(e) => setSelectedLang(e.target.value)}
-          className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+          className="input-modern"
         >
           <option value="en">English</option>
           <option value="es">Spanish</option>
           <option value="fr">French</option>
           <option value="de">German</option>
           <option value="zh">Chinese</option>
+          <option value="hi">Hindi (हिन्दी)</option>
         </select>
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
+        <label className="flex items-center justify-between text-sm font-semibold text-gray-700 mb-2">
           Search Query
+          <span className="text-xs text-gray-500 font-normal">Text or voice input</span>
         </label>
-        <div className="flex space-x-2">
+        <div className="flex space-x-2 items-start">
           <input
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Enter your search query..."
-            className="flex-1 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+            className="flex-1 input-modern"
             onKeyPress={(e) => e.key === 'Enter' && handleQuery()}
           />
           <button
+            onClick={toggleVoiceInput}
+            disabled={loading}
+            className={`p-3 rounded-xl transition-all duration-300 ${
+              isListening
+                ? 'bg-red-500 text-white animate-pulse shadow-lg shadow-red-500/50'
+                : 'glass-card hover:scale-105 text-indigo-600'
+            }`}
+            title={isListening ? 'Stop recording' : 'Start voice input'}
+          >
+            {isListening ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
+          </button>
+          <button
             onClick={handleQuery}
             disabled={loading || !query.trim()}
-            className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="btn-primary flex items-center"
           >
-            <Search className="h-4 w-4 mr-2" />
-            Search
+            {loading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Search className="h-4 w-4 mr-2" />}
+            {loading ? 'Searching...' : 'Search'}
           </button>
         </div>
+        {isListening && (
+          <div className="mt-2 glass-card p-3 flex items-center space-x-2 animate-pulse">
+            <div className="flex space-x-1">
+              <div className="h-2 w-1 bg-red-500 rounded-full animate-bounce"></div>
+              <div className="h-2 w-1 bg-red-500 rounded-full animate-bounce" style={{animationDelay: '0.1s'}}></div>
+              <div className="h-2 w-1 bg-red-500 rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
+            </div>
+            <span className="text-sm text-red-600 font-medium">Listening...</span>
+          </div>
+        )}
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">Query by Image</label>
+        <label className="flex items-center text-sm font-semibold text-gray-700 mb-2">
+          <Camera className="h-4 w-4 mr-2" />
+          Query by Image
+        </label>
         <div className="flex items-center space-x-2">
           <input
             type="file"
             accept="image/*"
             onChange={(e) => setImageFile(e.target.files?.[0] || null)}
-            className="block w-full text-sm text-gray-700"
+            className="input-modern text-sm"
           />
           <button
             onClick={handleImageQuery}
             disabled={loading || !imageFile}
-            className="flex items-center px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="btn-secondary flex items-center whitespace-nowrap"
           >
             <Camera className="h-4 w-4 mr-2" />
-            Search Image
+            Search
           </button>
         </div>
       </div>
 
       {loading && (
-        <div className="text-center py-8">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="text-gray-600 mt-2">Searching...</p>
+        <div className="glass-card p-8 text-center">
+          <Loader2 className="h-12 w-12 animate-spin text-indigo-600 mx-auto mb-4" />
+          <p className="text-gray-600 font-medium">Searching across your knowledge base...</p>
         </div>
       )}
 
       {results && (
         <div className="space-y-6">
-          <div className="bg-blue-50 p-4 rounded-lg">
-            <h3 className="text-lg font-medium text-blue-900 mb-2">AI Generation</h3>
-            <p className="text-blue-800 whitespace-pre-wrap">{results.generation}</p>
+          <div className="glass-card-hover p-6 border-l-4 border-indigo-500">
+            <h3 className="text-lg font-semibold gradient-text mb-3 flex items-center">
+              <Sparkles className="h-5 w-5 mr-2" />
+              AI Generation
+            </h3>
+            <p className="text-gray-800 leading-relaxed whitespace-pre-wrap">{results.generation}</p>
           </div>
 
           <div>
-            <h3 className="text-lg font-medium text-gray-900 mb-4">Retrieved Results</h3>
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Retrieved Results</h3>
             <div className="space-y-4">
               {results.results.map((result, index) => (
-                <div key={index} className="border border-gray-200 rounded-lg p-4">
+                <div key={index} className="glass-card-hover p-5">
                   <div className="flex items-center space-x-2 mb-2">
                     {result.type === 'image' ? (
                       <Image className="h-5 w-5 text-green-600" />
                     ) : (
-                      <FileText className="h-5 w-5 text-blue-600" />
+                      <FileText className="h-5 w-5 text-indigo-600" />
                     )}
-                    <span className="font-medium">
+                    <span className="font-semibold text-gray-900">
                       {result.original_name || `Text Content ${index + 1}`}
                     </span>
-                    <span className="text-sm text-gray-500">
-                      Score: {result.score.toFixed(3)}
+                    <span className="ml-auto px-3 py-1 bg-indigo-100 text-indigo-700 text-xs font-semibold rounded-full">
+                      {(result.score * 100).toFixed(1)}% match
                     </span>
                   </div>
                   {result.image_b64 && (
                     <img 
                       src={`data:image/png;base64,${result.image_b64}`} 
                       alt={result.original_name || 'uploaded'}
-                      className="mt-2 max-w-xs rounded border"
+                      className="mt-3 max-w-md rounded-xl border-2 border-gray-200 shadow-md"
                     />
                   )}
                   {result.content && (
-                    <p className="text-gray-700 text-sm mt-2">{result.content}</p>
+                    <p className="text-gray-700 text-sm mt-3 leading-relaxed">{result.content}</p>
                   )}
                 </div>
               ))}
             </div>
           </div>
 
-          <div className="bg-gray-50 p-4 rounded-lg">
-            <h3 className="text-lg font-medium text-gray-900 mb-2">Performance Metrics</h3>
-            <div className="grid grid-cols-3 gap-4 text-sm">
-              <div>
-                <span className="font-medium">Cosine Similarity:</span>
-                <span className="ml-2">{results.metrics.cosine_avg.toFixed(3)}</span>
+          <div className="glass-card p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Performance Metrics</h3>
+            <div className="grid grid-cols-3 gap-4">
+              <div className="text-center glass-card p-4">
+                <div className="text-2xl font-bold text-indigo-600">{results.metrics.cosine_avg.toFixed(3)}</div>
+                <div className="text-xs text-gray-600 mt-1">Cosine Similarity</div>
               </div>
-              <div>
-                <span className="font-medium">BLEU Score:</span>
-                <span className="ml-2">{results.metrics.bleu_score.toFixed(3)}</span>
+              <div className="text-center glass-card p-4">
+                <div className="text-2xl font-bold text-purple-600">{results.metrics.bleu_score.toFixed(3)}</div>
+                <div className="text-xs text-gray-600 mt-1">BLEU Score</div>
               </div>
-              <div>
-                <span className="font-medium">Latency:</span>
-                <span className="ml-2">{results.metrics.latency}ms</span>
+              <div className="text-center glass-card p-4">
+                <div className="text-2xl font-bold text-pink-600">{results.metrics.latency}ms</div>
+                <div className="text-xs text-gray-600 mt-1">Latency</div>
               </div>
             </div>
           </div>

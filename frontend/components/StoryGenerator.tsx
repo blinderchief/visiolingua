@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useAuth } from '@clerk/nextjs'
-import { BookOpen } from 'lucide-react'
+import { BookOpen, Sparkles, Loader2, FileText } from 'lucide-react'
 
 interface StoryGeneratorProps {
   uploadedFiles?: { name: string; id: string; timestamp: Date }[]
@@ -74,21 +74,28 @@ export default function StoryGenerator({ uploadedFiles = [] }: StoryGeneratorPro
   return (
     <div className="space-y-6">
       <div>
-        <h3 className="text-lg font-medium text-gray-900 mb-4">AI Story Generator</h3>
-        <p className="text-gray-600 mb-4">
+        <div className="glass-card p-6 border-l-4 border-purple-500">
+          <div className="flex items-center space-x-3 mb-3">
+            <div className="p-3 bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl">
+              <Sparkles className="h-6 w-6 text-white" />
+            </div>
+            <h3 className="text-xl font-bold gradient-text">AI Story Generator</h3>
+          </div>
+          <p className="text-gray-600">
           Generate short stories grounded in your uploaded image or text. Select a recent upload (defaults to the most recent image if available), pick a language, and add an optional theme.
         </p>
+        </div>
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
+        <label className="block text-sm font-semibold text-gray-700 mb-2">
           Source Content
         </label>
         {uploadedFiles.length > 0 ? (
           <select
             value={selectedContentId}
             onChange={(e) => setSelectedContentId(e.target.value)}
-            className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-purple-500 focus:border-purple-500"
+            className="input-modern"
           >
             {uploadedFiles.slice(-10).reverse().map((f) => (
               <option key={f.id} value={f.id}>
@@ -97,29 +104,33 @@ export default function StoryGenerator({ uploadedFiles = [] }: StoryGeneratorPro
             ))}
           </select>
         ) : (
-          <div className="text-sm text-gray-500">No uploads yet. Upload an image or text in the Upload tab first.</div>
+          <div className="glass-card p-4 flex items-center space-x-3 text-sm text-gray-500">
+            <FileText className="h-5 w-5" />
+            <span>No uploads yet. Upload an image or text in the Upload tab first.</span>
+          </div>
         )}
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
+        <label className="block text-sm font-semibold text-gray-700 mb-2">
           Story Language
         </label>
         <select
           value={selectedLang}
           onChange={(e) => setSelectedLang(e.target.value)}
-          className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+          className="input-modern"
         >
           <option value="en">English</option>
           <option value="es">Spanish</option>
           <option value="fr">French</option>
           <option value="de">German</option>
           <option value="zh">Chinese</option>
+          <option value="hi">Hindi (हिन्दी)</option>
         </select>
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
+        <label className="block text-sm font-semibold text-gray-700 mb-2">
           Story Theme
         </label>
         <input
@@ -127,31 +138,35 @@ export default function StoryGenerator({ uploadedFiles = [] }: StoryGeneratorPro
           value={theme}
           onChange={(e) => setTheme(e.target.value)}
           placeholder="e.g., a magical forest adventure, time travel mystery..."
-          className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+          className="input-modern"
         />
       </div>
 
       <button
         onClick={handleGenerate}
         disabled={loading || !theme.trim()}
-        className="flex items-center px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
+        className="btn-primary flex items-center"
       >
         <BookOpen className="h-4 w-4 mr-2" />
         {loading ? 'Generating...' : 'Generate Story'}
       </button>
 
       {loading && (
-        <div className="text-center py-8">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600 mx-auto"></div>
-          <p className="text-gray-600 mt-2">Crafting your story...</p>
+        <div className="glass-card p-8 text-center">
+          <Loader2 className="h-10 w-10 animate-spin text-purple-600 mx-auto mb-4" />
+          <p className="text-gray-700 font-medium">Crafting your story...</p>
+          <p className="text-sm text-gray-500 mt-2">This may take a few moments</p>
         </div>
       )}
 
       {story && (
-        <div className="bg-purple-50 p-6 rounded-lg">
-          <h4 className="text-lg font-medium text-purple-900 mb-4">Your Generated Story</h4>
-          <div className="prose prose-purple max-w-none">
-            <p className="text-purple-800 whitespace-pre-wrap">{story}</p>
+        <div className="glass-card p-6 border-l-4 border-purple-500">
+          <div className="flex items-center space-x-2 mb-4">
+            <Sparkles className="h-5 w-5 text-purple-600" />
+            <h4 className="text-lg font-bold gradient-text">Your Generated Story</h4>
+          </div>
+          <div className="prose prose-purple max-w-none glass-card p-6 bg-gradient-to-br from-purple-50/50 to-pink-50/50">
+            <p className="text-gray-800 whitespace-pre-wrap leading-relaxed">{story}</p>
           </div>
         </div>
       )}

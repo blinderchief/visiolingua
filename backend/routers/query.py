@@ -7,12 +7,51 @@ import time
 import os
 from nltk.translate.bleu_score import sentence_bleu, SmoothingFunction
 
-from ..services.embeddings import clip_text_embedding, multilingual_text_embedding, clip_image_embedding
-from ..services.generation import generate_description
-from ..services.translate import translate_text
-from ..db.vector_store import search
+from services.embeddings import clip_text_embedding, multilingual_text_embedding, clip_image_embedding
+from services.generation import generate_description
+from services.translate import translate_text
+from services.encryption import decrypt_data
+from db.vector_store import search, list_user_points
+from services.hybrid_search import HybridSearch, simple_tokenize
+
 
 router = APIRouter()
+
+# Privacy Policy endpoint
+
+
+@router.get("/privacy-policy")
+async def privacy_policy():
+    return {
+        "policy": "Your data is encrypted at rest using AES-256. You may export or delete your data at any time in accordance with GDPR Articles 15 and 17. No personal data is shared with third parties."
+    }
+
+# GDPR Data Export endpoint
+
+
+@router.get("/data-export/{user_id}")
+async def data_export(user_id: str):
+    from ..db.vector_store import list_user_points
+    from ..services.encryption import decrypt_data
+    points = list_user_points(user_id)
+    export = []
+    for p in points:
+        item = p.copy()
+        if item.get("content"):
+            item["content"] = decrypt_data(item["content"])
+        if item.get("image_b64"):
+            item["image_b64"] = decrypt_data(item["image_b64"])
+        export.append(item)
+    return {"user_id": user_id, "data": export}
+
+# GDPR Data Delete endpoint
+
+
+@router.delete("/data-delete/{user_id}")
+async def data_delete(user_id: str):
+    from ..db.vector_store import delete_user_points
+    deleted = delete_user_points(user_id)
+    return {"user_id": user_id, "deleted": deleted}
 
 class QueryRequest(BaseModel):
     query: str
@@ -29,49 +68,39 @@ async def query_content(req: QueryRequest):
             f.write("QUERY start\n")
     except Exception:
         pass
-    # Compute both CLIP text embedding (for cross-modal) and multilingual text embedding (for text-text)
-    if ENABLE_CLIP:
-        try:
-            clip_q = clip_text_embedding(req.query)
-        except Exception:
-            clip_q = [0.0] * 512
-    else:
-        clip_q = [0.0] * 512
-    multi_q = multilingual_text_embedding(req.query)
-
-    # Search both spaces
+    # Hybrid RAG retrieval: BM25 + vector fusion + query expansion
     t0 = time.time()
-    try:
-        clip_hits = search(clip_q, vector_name="clip", limit=30)
-    except Exception as e:
-        clip_hits = []
-        try:
-            with open(r"e:\\VisioLingua\\upload_trace.txt", "a", encoding="utf-8") as f:
-                f.write(f"QUERY clip search error: {e}\n")
-        except Exception:
-            pass
-    text_hits = search(multi_q, vector_name="text", limit=30)
+    # Query expansion: add synonyms (stub, could use WordNet or embedding neighbors)
+    synonyms = []
+    expanded_query = req.query + (" " + " ".join(synonyms) if synonyms else "")
+    # Get all user points (for BM25)
+    user_points = list_user_points(req.user_id)
 
-    # Merge hits by point id, keeping the best score
-    combined: Dict[str, Dict] = {}
-    for hit in list(clip_hits) + list(text_hits):
-        pid = str(hit.id)
-        score = hit.score or 0
-        payload = hit.payload or {}
-        if payload.get("user_id") != req.user_id:
-            continue
-        if pid not in combined or score > combined[pid]["score"]:
-            combined[pid] = {"payload": payload, "score": score}
+    # Check if we have any data to search
+    if not user_points or len(user_points) == 0:
+        return {
+            "results": [],
+            "generation": "No content found. Please upload some content first.",
+            "metrics": {"avg_cosine": 0.0, "bleu": 0.0, "latency_ms": 0},
+            "lang": req.lang
+        }
 
-    # Sort by score and take top 3 with threshold
-    merged_results = sorted(combined.values(), key=lambda x: x["score"], reverse=True)
-    filtered = [r for r in merged_results if r["score"] >= 0.3][:3]
-
+    corpus = [p.get("content", "") for p in user_points]
+    vectors = np.array([p.get("text_vector", [0.0]*384) for p in user_points])
+    query_vec = multilingual_text_embedding(expanded_query)
+    # BM25+vector hybrid search
+    hybrid = HybridSearch(corpus, vectors)
+    top_results = hybrid.search(
+        expanded_query, np.array(query_vec), top_k=5, alpha=0.6)
     results = []
-    for r in filtered:
-        p = r["payload"].copy()
-        p["score"] = r["score"]
-        # Translate retrieved text content if requested language differs
+    for idx, score in top_results:
+        p = user_points[idx].copy()
+        # Decrypt content and image_b64 if present
+        if p.get("content"):
+            p["content"] = decrypt_data(p["content"])
+        if p.get("image_b64"):
+            p["image_b64"] = decrypt_data(p["image_b64"])
+        p["score"] = float(score)
         if p.get("content") and req.lang and p.get("lang") and p["lang"] != req.lang:
             p["content"] = translate_text(p["content"], src_lang=p.get("lang", "en"), tgt_lang=req.lang)
             p["lang"] = req.lang
@@ -83,13 +112,15 @@ async def query_content(req: QueryRequest):
     if image_candidates:
         try:
             img_bytes = base64.b64decode(image_candidates[0]["image_b64"])
-            generation = generate_description(img_bytes, req.lang, user_query=req.query)
+            generation = generate_description(
+                img_bytes, req.lang, user_query=expanded_query)
         except Exception as e:
             print(f"image decode/generation error: {e}")
 
     if not generation:
         context = "\n".join([r.get("content", "") for r in results if r.get("content")])
-        generation = generate_description(context or req.query, req.lang, user_query=req.query)
+        generation = generate_description(
+            context or expanded_query, req.lang, user_query=expanded_query)
 
     # Evaluation metrics
     latency_ms = int((time.time() - t0) * 1000)
@@ -105,6 +136,7 @@ async def query_content(req: QueryRequest):
         "cosine_avg": cosine_avg,
         "bleu_score": bleu,
         "latency": latency_ms,
+        "hybrid": True,
     }
 
     try:

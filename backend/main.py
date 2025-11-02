@@ -1,3 +1,7 @@
+from routers.query import router as query_router
+from routers.upload import router as upload_router
+from services.generation import configure_gemini, generate_description, generate_story_from_image, generate_story_from_text
+from db.vector_store import ensure_collection, retrieve_point, list_user_points
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -18,10 +22,6 @@ load_dotenv()
 CLERK_SECRET_KEY = os.getenv("CLERK_SECRET_KEY", "your_clerk_secret")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "your_gemini_api_key")
 
-from .db.vector_store import ensure_collection, retrieve_point, list_user_points
-from .services.generation import configure_gemini, generate_description, generate_story_from_image, generate_story_from_text
-from .routers.upload import router as upload_router
-from .routers.query import router as query_router
 
 # Initialize FastAPI
 @asynccontextmanager
@@ -140,4 +140,21 @@ async def get_history(user_id: str):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    import signal
+    import sys
+
+    def signal_handler(signum, frame):
+        print("\nReceived shutdown signal. Shutting down gracefully...")
+        sys.exit(0)
+
+    # Register signal handlers for graceful shutdown
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+
+    try:
+        uvicorn.run(app, host="0.0.0.0", port=8000)
+    except KeyboardInterrupt:
+        print("\nServer shutdown requested by user.")
+    except Exception as e:
+        print(f"Server error: {e}")
+        sys.exit(1)

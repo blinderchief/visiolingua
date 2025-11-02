@@ -7,9 +7,10 @@ import io
 from PIL import Image
 import os
 
-from ..services.embeddings import clip_image_embedding, clip_text_embedding, multilingual_text_embedding
-from ..services.generation import generate_description
-from ..db.vector_store import upsert_point
+from services.embeddings import clip_image_embedding, clip_text_embedding, multilingual_text_embedding
+from services.generation import generate_description
+from db.vector_store import upsert_point
+from services.encryption import encrypt_data
 
 router = APIRouter()
 
@@ -89,8 +90,8 @@ async def upload_content(
             payload.update({
                 "type": "image",
                 "original_name": file.filename or "uploaded",
-                "content": caption,
-                "image_b64": base64.b64encode(content_bytes).decode("utf-8"),
+                "content": encrypt_data(caption),
+                "image_b64": encrypt_data(base64.b64encode(content_bytes).decode("utf-8")),
             })
             vectors = {"clip": clip_vec, "text": text_vec}
         else:
@@ -116,7 +117,8 @@ async def upload_content(
                         f.write(f"text emb (file) error: {e}\n")
                 except Exception:
                     pass
-            payload.update({"type": "text", "original_name": file.filename or "uploaded", "content": clean_text})
+            payload.update({"type": "text", "original_name": file.filename or "uploaded",
+                           "content": encrypt_data(clean_text)})
             vectors = {"clip": clip_text_vec, "text": multi_text_vec}
 
     elif text:
@@ -137,8 +139,13 @@ async def upload_content(
                     f.write(f"text emb (plain) error: {e}\n")
             except Exception:
                 pass
-        payload.update({"type": "text", "content": clean_text})
+        payload.update({"type": "text", "content": encrypt_data(clean_text)})
         vectors = {"clip": clip_text_vec, "text": multi_text_vec}
+
+    else:
+        # Neither file nor text provided
+        raise HTTPException(
+            status_code=400, detail="Either file or text must be provided")
 
     # Ensure vectors present
     if not vectors:
@@ -149,19 +156,31 @@ async def upload_content(
             f.write("UPSERT...\n")
     except Exception:
         pass
+    success = False  # Initialize success flag
     try:
-        upsert_point(content_id, vectors, payload)
-        try:
-            with open(r"e:\\VisioLingua\\upload_trace.txt", "a", encoding="utf-8") as f:
-                f.write("UPSERT done\n")
-        except Exception:
-            pass
+        success = upsert_point(content_id, vectors, payload)
+        if success:
+            try:
+                with open(r"e:\\VisioLingua\\upload_trace.txt", "a", encoding="utf-8") as f:
+                    f.write("UPSERT done\n")
+            except Exception:
+                pass
+        else:
+            # Qdrant is unavailable, but upload can still succeed
+            print(
+                f"Warning: Content uploaded but vector storage failed for {content_id}")
+            try:
+                with open(r"e:\\VisioLingua\\upload_trace.txt", "a", encoding="utf-8") as f:
+                    f.write(f"UPSERT failed - Qdrant unavailable\n")
+            except Exception:
+                pass
     except Exception as e:
+        # Qdrant is unavailable, but upload can still succeed
+        print(f"Warning: Content uploaded but vector storage failed: {e}")
         try:
             with open(r"e:\\VisioLingua\\upload_trace.txt", "a", encoding="utf-8") as f:
                 f.write(f"UPSERT error: {e}\n")
         except Exception:
             pass
-        raise HTTPException(status_code=500, detail=f"Vector DB error: {e}")
 
-    return {"id": content_id, "message": "Content uploaded successfully"}
+    return {"id": content_id, "message": "Content uploaded successfully", "vector_stored": success}

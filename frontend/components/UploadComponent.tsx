@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect } from 'react'
 import { useAuth } from '@clerk/nextjs'
 import { useDropzone } from 'react-dropzone'
-import { Upload, FileText, CheckCircle } from 'lucide-react'
+import { Upload, FileText, CheckCircle, Loader2, Image as ImageIcon } from 'lucide-react'
 
 interface UploadComponentProps {
   onUploadSuccess: (fileName: string, id: string) => void
@@ -113,15 +113,17 @@ export default function UploadComponent({ onUploadSuccess, uploadedFiles }: Uplo
   return (
     <div className="space-y-6">
       {uploadedFiles.length > 0 && (
-        <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-          <h3 className="text-sm font-medium text-green-900 mb-2 flex items-center">
+        <div className="glass-card p-5 border-l-4 border-green-500">
+          <h3 className="text-sm font-semibold text-green-900 mb-3 flex items-center">
             <CheckCircle className="h-4 w-4 mr-2" />
             Recently Uploaded ({uploadedFiles.length})
           </h3>
-          <div className="space-y-1">
+          <div className="space-y-2">
             {uploadedFiles.slice(-5).reverse().map((file, idx) => (
-              <div key={idx} className="text-xs text-green-700">
-                • {file.name} ({new Date(file.timestamp).toLocaleTimeString()})
+              <div key={idx} className="flex items-center space-x-2 text-xs text-green-700 glass-card p-2">
+                <ImageIcon className="h-3 w-3" />
+                <span className="flex-1 truncate">{file.name}</span>
+                <span className="text-gray-500">{new Date(file.timestamp).toLocaleTimeString()}</span>
               </div>
             ))}
           </div>
@@ -129,67 +131,96 @@ export default function UploadComponent({ onUploadSuccess, uploadedFiles }: Uplo
       )}
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
+        <label className="block text-sm font-semibold text-gray-700 mb-2">
           Language
         </label>
         <select
           value={selectedLang}
           onChange={(e) => setSelectedLang(e.target.value)}
-          className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+          className="input-modern"
         >
           <option value="en">English</option>
           <option value="es">Spanish</option>
           <option value="fr">French</option>
           <option value="de">German</option>
           <option value="zh">Chinese</option>
+          <option value="hi">Hindi (हिन्दी)</option>
         </select>
       </div>
 
       <div>
-        <h3 className="text-lg font-medium text-gray-900 mb-4">Upload Image or Text</h3>
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">Upload Image or Text</h3>
         <div
           {...getRootProps()}
-          className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors ${
-            isDragActive ? 'border-blue-400 bg-blue-50' : 'border-gray-300 hover:border-gray-400'
+          className={`glass-card-hover border-2 border-dashed p-12 text-center cursor-pointer transition-all duration-300 ${
+            isDragActive ? 'border-indigo-400 bg-indigo-50/50 scale-105' : 'border-gray-300'
           }`}
         >
           <input {...getInputProps()} />
-          <Upload className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+          <div className="inline-block p-4 bg-gradient-to-br from-indigo-500 to-purple-500 rounded-2xl mb-4">
+            <Upload className="h-8 w-8 text-white" />
+          </div>
           {isDragActive ? (
-            <p className="text-lg text-blue-600">Drop the file here...</p>
+            <p className="text-lg text-indigo-600 font-medium">Drop the file here...</p>
           ) : (
-            <p className="text-lg text-gray-600">
+            <div>
+              <p className="text-lg text-gray-900 font-medium mb-2">
+                Drag & drop your files here
+              </p>
+              <p className="text-sm text-gray-500">
+                or click to browse
+              </p>
+              <p className="text-xs text-gray-400 mt-2">
               Drag & drop an image or text file here, or click to select
-            </p>
+                Supports: JPG, PNG, GIF, TXT
+              </p>
+            </div>
           )}
         </div>
-        {uploading && <p className="text-center text-blue-600 mt-4">Uploading...</p>}
+        {uploading && (
+          <div className="glass-card p-4 mt-4 flex items-center justify-center space-x-3">
+            <Loader2 className="h-5 w-5 animate-spin text-indigo-600" />
+            <span className="text-indigo-600 font-medium">Uploading and processing...</span>
+          </div>
+        )}
       </div>
 
       <div>
-        <h3 className="text-lg font-medium text-gray-900 mb-4">Or Enter Text Directly</h3>
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">Or Enter Text Directly</h3>
         <textarea
           value={textInput}
           onChange={(e) => setTextInput(e.target.value)}
           placeholder="Enter your text here..."
-          className="w-full h-32 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+          className="input-modern h-32 resize-none"
         />
         <button
           onClick={handleTextUpload}
           disabled={uploading || !textInput.trim()}
-          className="mt-2 flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="mt-3 btn-primary flex items-center"
         >
           <FileText className="h-4 w-4 mr-2" />
-          Upload Text
+          {uploading ? 'Uploading...' : 'Upload Text'}
         </button>
       </div>
 
       {message && (
-        <div className={`p-4 rounded-md ${message.includes('successful') ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'}`}>
-          {message}
+        <div className={`glass-card p-4 border-l-4 ${
+          message.includes('successful') 
+            ? 'border-green-500 bg-green-50/50' 
+            : 'border-red-500 bg-red-50/50'
+        }`}>
+          <div className="flex items-center space-x-2">
+            {message.includes('successful') ? (
+              <CheckCircle className="h-5 w-5 text-green-600" />
+            ) : (
+              <span className="text-red-600 font-medium">⚠️</span>
+            )}
+            <span className={message.includes('successful') ? 'text-green-800 font-medium' : 'text-red-800 font-medium'}>
+              {message}
+            </span>
+          </div>
         </div>
       )}
     </div>
   )
 }
- 
