@@ -333,15 +333,15 @@ export default function QueryComponent({ onQuerySuccess, queryHistory }: QueryCo
             <h3 className="text-lg font-semibold text-gray-900 mb-4">Performance Metrics</h3>
             <div className="grid grid-cols-3 gap-4">
               <div className="text-center glass-card p-4">
-                <div className="text-2xl font-bold text-indigo-600">{results.metrics.cosine_avg.toFixed(3)}</div>
+                <div className="text-2xl font-bold text-indigo-600">{(results.metrics?.cosine_avg ?? 0).toFixed(3)}</div>
                 <div className="text-xs text-gray-600 mt-1">Cosine Similarity</div>
               </div>
               <div className="text-center glass-card p-4">
-                <div className="text-2xl font-bold text-purple-600">{results.metrics.bleu_score.toFixed(3)}</div>
+                <div className="text-2xl font-bold text-purple-600">{(results.metrics?.bleu_score ?? 0).toFixed(3)}</div>
                 <div className="text-xs text-gray-600 mt-1">BLEU Score</div>
               </div>
               <div className="text-center glass-card p-4">
-                <div className="text-2xl font-bold text-pink-600">{results.metrics.latency}ms</div>
+                <div className="text-2xl font-bold text-pink-600">{results.metrics?.latency ?? 0}ms</div>
                 <div className="text-xs text-gray-600 mt-1">Latency</div>
               </div>
             </div>

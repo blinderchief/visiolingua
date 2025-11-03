@@ -81,12 +81,98 @@ async def query_content(req: QueryRequest):
         return {
             "results": [],
             "generation": "No content found. Please upload some content first.",
-            "metrics": {"avg_cosine": 0.0, "bleu": 0.0, "latency_ms": 0},
+            "metrics": {"cosine_avg": 0.0, "bleu_score": 0.0, "latency": 0},
             "lang": req.lang
         }
 
     corpus = [p.get("content", "") for p in user_points]
     vectors = np.array([p.get("text_vector", [0.0]*384) for p in user_points])
+
+    # Check if corpus has any valid content (not all empty strings)
+    valid_corpus = [c for c in corpus if c and c.strip()]
+
+    if not valid_corpus:
+        # No text content, but we can still do vector-only search for images
+        query_vec = multilingual_text_embedding(expanded_query)
+
+        # Calculate cosine similarity for vector-only search
+        from numpy.linalg import norm
+        similarities = []
+        for i, vec in enumerate(vectors):
+            vec_norm = norm(vec)
+            query_norm = norm(query_vec)
+            if vec_norm > 0 and query_norm > 0:
+                sim = np.dot(vec, query_vec) / (vec_norm * query_norm)
+                similarities.append((i, float(sim)))
+                print(f"Image {i}: similarity = {sim:.4f}")  # Debug logging
+            else:
+                similarities.append((i, 0.0))
+                print(
+                    f"Image {i}: zero vector (vec_norm={vec_norm:.4f}, query_norm={query_norm:.4f})")
+
+        # Sort by similarity and get top 5
+        similarities.sort(key=lambda x: x[1], reverse=True)
+        top_results = similarities[:5]
+        print(f"Top 5 similarities: {[(i, f'{s:.4f}')
+              for i, s in top_results]}")  # Debug logging
+
+        results = []
+        for idx, score in top_results:
+            # Lower threshold for images since text-to-image matching is harder
+            # Always include at least the top result if we have any data
+            if len(results) == 0 or score >= 0.01:  # Very low threshold, at least 1 result
+                p = user_points[idx].copy()
+                # Decrypt content and image_b64 if present
+                if p.get("content"):
+                    p["content"] = decrypt_data(p["content"])
+                if p.get("image_b64"):
+                    p["image_b64"] = decrypt_data(p["image_b64"])
+                p["score"] = float(score)
+                results.append(p)
+                # Debug
+                print(
+                    f"Added result {idx} with score {score:.4f}, type={p.get('type')}, has_image={bool(p.get('image_b64'))}")
+
+        # Generate description from the best matching image if available
+        generation = ""
+        image_found = False
+        for r in results:
+            if r.get("type") == "image" and r.get("image_b64"):
+                try:
+                    img_bytes = base64.b64decode(r["image_b64"])
+                    generation = generate_description(
+                        img_bytes, req.lang, user_query=expanded_query)
+                    image_found = True
+                    break
+                except Exception as e:
+                    print(f"image decode/generation error: {e}")
+
+        if not generation:
+            if results:
+                # Try to use the caption from the first result
+                caption = results[0].get("content", "")
+                if caption:
+                    generation = f"Based on your uploaded content: {caption}"
+                else:
+                    generation = f"Found {len(results)} item(s) matching your query."
+            else:
+                generation = "No matching content found for your query. Try a different search term."
+
+        # Calculate metrics
+        latency_ms = int((time.time() - t0) * 1000)
+        cosine_avg = float(np.mean([r["score"]
+                           for r in results])) if results else 0.0
+
+        metrics = {
+            "cosine_avg": cosine_avg,
+            "bleu_score": 0.0,
+            "latency": latency_ms,
+            "hybrid": False,
+        }
+
+        return {"results": results, "generation": generation, "metrics": metrics, "lang": req.lang}
+
+    # If we have text content, proceed with hybrid search
     query_vec = multilingual_text_embedding(expanded_query)
     # BM25+vector hybrid search
     hybrid = HybridSearch(corpus, vectors)
